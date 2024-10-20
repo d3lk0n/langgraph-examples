@@ -15,7 +15,7 @@ In other words, a dialogue is modeled wtih:
 
 ## Structure
 
-### [Python examples](https://github.com/WSE-research/langgraph-examples/python_examples)
+### [Python examples](https://github.com/WSE-research/langgraph-examples/tree/main/python_examples)
 
 ### JavaScript examples (To be done...)
 
