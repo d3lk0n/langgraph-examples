@@ -4,7 +4,7 @@ from typing import List, Optional
 import uuid
 from enum import Enum
 
-app = FastAPI()
+app = FastAPI(root_path='/pizza-api')
 
 # Enums and Models
 class OrderStatus(str, Enum):

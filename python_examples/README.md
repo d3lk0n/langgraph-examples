@@ -13,6 +13,10 @@ The Pizza Bot's dialogue graph is presented below:
 1. Run `python pizzabot.py` within the `python_examples/`
 2. Follow the dialogue in your console
 
+## External Tools
+
+Pizza API: https://demos.swe.htwk-leipzig.de/pizza-api/docs
+
 ## Requirements
 
 Make sure you have:
