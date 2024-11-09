@@ -1,6 +1,6 @@
 from typing import TypedDict
 import requests
-from re import search, split, findall
+from re import split, findall
 
 from fuzzywuzzy import fuzz
 
@@ -27,7 +27,7 @@ class ChatbotState(TypedDict):
     invalid: bool
     ended: bool
     pizza_id: str
-    address: str
+    customer_address: tuple[str]
     order_id: str
 
 class Nodes(Enum):
@@ -40,6 +40,7 @@ class Nodes(Enum):
 class OrderSlots(Enum):
     PIZZA_NAME = "pizza_name"
     CUSTOMER_ADDRESS = "customer_address"
+    ORDER_ID = "order_id"
     ADDITIONAL_INFORMATION = "additional_information"
     CUSTOMER_TEL_NUMBER = "customer_tel_number"
     DELIVERY_TIME = "delivery_time"
@@ -83,17 +84,17 @@ class CheckerNode:
         # add constraints for additional info
         
         if state['active_order']:
+            #TODO instead check whether states pizza_id, customer_address... are valid
             if OrderSlots.PIZZA_NAME.value in state["messages"][-1].content:
                 pizza_id = check_pizzas(_input)
                 if pizza_id is not None:
                     #found pizza type
-                    state['pizza_id'] = True
+                    state['pizza_id'] = pizza_id
                     return {
                         "messages": state["messages"],
                         "pizza_id": state["pizza_id"]
                     }
                 else:
-                    print("pizza type not found")
                     state["invalid"] = True
                     state['messages'].append(AIMessage(content="Invalid pizza type. Please specify a valid type (e.g. a pizza Pepperoni)'."))
                     return {
@@ -104,19 +105,18 @@ class CheckerNode:
             elif OrderSlots.CUSTOMER_ADDRESS.value in state["messages"][-1].content:
                 customer_address = check_customer_address(_input)
                 if customer_address is not None:
-                    state['customer address'] = True
+                    state['customer_address'] = customer_address
                     return {
                         "messages": state["messages"],
-                        "customer address": state["customer address"]
+                        "customer_address": state["customer_address"]
                     }
                 else:
                     state["invalid"] = True
-                    state['messages'].append(AIMessage(content="Invalid customer address. Please specify a valid address."))
+                    state['messages'].append(AIMessage(content="Invalid customer address. Please keep in mind, we only deliver to Halle, Leipzig and Dresden."))
                     return {
                         "messages": state["messages"],
                         "invalid": state["invalid"]
-                    }   
-            #TODO elif for post order
+                    }
         
         if not all(keyword in _input for keyword in self.order_keywords):
             state['messages'].append(AIMessage(content="Invalid order. Please specify a pizza order. Try writing 'I want to order a pizza'."))
@@ -130,8 +130,6 @@ class CheckerNode:
                 "messages": state["messages"],
                 "active_order": state["active_order"]
             }
-
-        
     
     def route(self, state: ChatbotState) -> str:
         """
@@ -143,13 +141,13 @@ class CheckerNode:
             return END
 
 def check_pizzas(input):
-    threshold = 75
+    threshold = 80
     response = requests.get("https://demos.swe.htwk-leipzig.de/pizza-api/pizza")
     menu = response.json()
     for item in menu:
         current_ratio = fuzz.partial_ratio(input, list(item.values())[1])
         if(current_ratio >= threshold):
-            print("debugging: " + str(list(item.values())[1]) + " was determined type")
+            #print("debugging: " + str(list(item.values())[1]) + " was determined type")
             return str(list(item.values())[0])
     return None
 
@@ -166,9 +164,8 @@ def check_customer_address(input):
     house_number = findall("\d+", input)[0]
 
     post = {"city":city, "street":street, "house_number":house_number}
-    
-    
     response = requests.post("https://demos.swe.htwk-leipzig.de/pizza-api/address/validate", json=post) 
+
     if response.status_code != 200:
         return None
 
@@ -187,10 +184,10 @@ class OrderNode:
         Returns fallback message
         """
 
-        #uncomment for additional information dialogue
-        #required_slots = [OrderSlots.PIZZA_NAME, OrderSlots.CUSTOMER_ADDRESS, OrderSlots.ADDITIONAL_INFORMATION]
+        #use for additional information dialogue (not in correct order with order_id)
+        #required_slots = [..., OrderSlots.ADDITIONAL_INFORMATION, OrderSlots.ORDER_ID]
         
-        required_slots = [OrderSlots.PIZZA_NAME, OrderSlots.CUSTOMER_ADDRESS]
+        required_slots = [OrderSlots.PIZZA_NAME, OrderSlots.CUSTOMER_ADDRESS, OrderSlots.ORDER_ID]
         missing_slots = [slot.value for slot in required_slots if slot.value not in state['slots'].keys()]
         optional_slots = [OrderSlots.CUSTOMER_TEL_NUMBER, OrderSlots.DELIVERY_TIME]
         optional_missing_slots = [slot.value for slot in optional_slots if slot.value not in state['slots'].keys()]
@@ -205,16 +202,31 @@ class OrderNode:
                 "invalid": state["invalid"]
             }
 
-
-        if not missing_slots and not state['additional_information']:
-            state['messages'].append(AIMessage("Thank you for providing all the details. Your order is being processed!"))
-            state['ended'] = True
-            return {
-                "messages": state["messages"],
-                "ended": state["ended"]
-            }
-
         next_slot = missing_slots[0] if missing_slots else optional_missing_slots[0]
+        
+        #try to end dialogue
+        if next_slot == OrderSlots.ORDER_ID.value and not state['additional_information']:
+            order_id = post_order(state["pizza_id"], state["customer_address"])
+            if order_id is not None:
+                state['order_id'] = order_id
+                state['messages'].append(AIMessage(content="Thank you for providing all the details. Your order is being processed! "
+                    + "Keep your order id ready incase you have further inquiries: " + state["order_id"] + " ."))
+                state['ended'] = True
+                return {
+                    "messages": state["messages"],
+                    "order_id": state["order_id"],
+                    "ended": state["ended"]
+                }
+            else:
+                #TODO properly set states for user to re-submit information  
+                state['messages'].append(AIMessage(content="Something went wrong while submitting your order, please try again."))
+                state['ended'] = True
+                return {
+                    "messages": state["messages"],
+                    "invalid": state["invalid"]
+                } 
+
+
         if next_slot == OrderSlots.PIZZA_NAME.value:
             state['messages'].append(AIMessage("What pizza would you like to order?"))
             state["messages"].append(FunctionMessage(content=OrderSlots.PIZZA_NAME, name=OrderSlots.PIZZA_NAME.value))
@@ -238,6 +250,7 @@ class OrderNode:
                 "confirm_order" : state["confirm_order"]
             }
         
+        # is only being asked within the confirm_order path
         elif state['additional_information']:
             if next_slot == OrderSlots.CUSTOMER_TEL_NUMBER.value:
                 state['messages'].append(AIMessage("What telephone number would you like to be reached at?"))
@@ -254,7 +267,41 @@ class OrderNode:
                     "additional_information": state["additional_information"]
                 }
             
+
+def post_order(pizza_id, address):
+    city, street, house_number = address
+    post = {"pizza_id":pizza_id, "city":city, "street":street, "house_number":house_number}
+    response = requests.post("https://demos.swe.htwk-leipzig.de/pizza-api/order", json=post)
+
+    if response.status_code != 200:
+        return None
     
+    order_id = response.json()["order_id"]
+    status = response.json()["status"]
+
+    if status != "received":
+        return None
+    
+    return order_id
+    
+
+    
+def get_order(order_id):
+    response = requests.get("https://demos.swe.htwk-leipzig.de/pizza-api/address/validate/" + order_id)
+    order = response.json()
+    #TODO return order information if asked
+
+
+
+
+# TODO Question:
+# Do the RetrievalNode and CheckerNode have to do the same kind of "verification" of user input? 
+# The CheckerNode checks whether the original user input is valid by transforming it (i.e. by regex)
+# The RetrievalNode would also get the original, untransformed user input (and thus would also need to transform it, to correctly extract relevant information)
+# 
+# Currently I'm using the RetrievalNode as a List of valid user input with the corresponding context (function message)
+# This List is never queried though...
+
 class RetrievalNode:
     """
     This node extracts the information from user input
@@ -345,13 +392,13 @@ if __name__ == "__main__":
     # START DIALOGUE: first message
     print("-- Chatbot: ", "Hi! I am a pizza bot. I can help you order a pizza. What would you like to order?")
     user_input = input("-> Your response: ")
-    outputs = graph.invoke({"input": user_input, "slots": {}, "messages": [], "active_order": False, "confirm_order":False, "additional_information":False, "invalid":False, "ended": False})
+    outputs = graph.invoke({"input": user_input, "slots": {}, "messages": [], "active_order": False, "confirm_order":False, "additional_information":False, "pizza_id":None, "customer_address":None, "invalid":False, "ended": False})
 
     while True:
         print("-- Chatbot: ", [m.content for m in outputs["messages"] if isinstance(m, AIMessage) ][-1]) # print chatbot response
         user_input = input("-> Your response: ")
 
-        outputs = graph.invoke({"input": user_input, "slots": outputs["slots"], "messages": outputs["messages"], "active_order": outputs["active_order"], "confirm_order":outputs["confirm_order"], "additional_information":outputs["additional_information"], "invalid":outputs["invalid"], "ended": outputs["ended"]})
+        outputs = graph.invoke({"input": user_input, "slots": outputs["slots"], "messages": outputs["messages"], "active_order": outputs["active_order"], "confirm_order":outputs["confirm_order"], "additional_information":outputs["additional_information"], "pizza_id":outputs["pizza_id"], "customer_address":outputs["customer_address"], "invalid":outputs["invalid"], "ended": outputs["ended"]})
 
         # check if the conversation has ended
         if outputs["ended"]:
