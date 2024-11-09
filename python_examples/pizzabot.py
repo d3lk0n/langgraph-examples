@@ -70,22 +70,14 @@ class CheckerNode:
                 state["confirm_order"] = False
                 return {
                     "messages": state["messages"],
-                    "slots": state["slots"],
-                    "active_order": state["active_order"],
-                    "confirm_order": state["confirm_order"],
-                    "additional_information": state["additional_information"],
-                    "ended": state["ended"]
+                    "confirm_order": state["confirm_order"]
                 }
             else:
                 #customer provides further contact/delivery information
                 state["additional_information"] = True
                 return {
                     "messages": state["messages"],
-                    "slots": state["slots"],
-                    "active_order": state["active_order"],
-                    "confirm_order": state["confirm_order"],
-                    "additional_information": state["additional_information"],
-                    "ended": state["ended"]
+                    "additional_information": state["additional_information"]
                 }
                 
         # add constraints for additional info
@@ -98,12 +90,7 @@ class CheckerNode:
                     state['pizza_id'] = True
                     return {
                         "messages": state["messages"],
-                        "slots": state["slots"],
-                        "active_order": state["active_order"],
-                        "confirm_order": state["confirm_order"],
-                        "additional_information": state["additional_information"],
-                        "pizza_id": state["pizza_id"],
-                        "ended": state["ended"]
+                        "pizza_id": state["pizza_id"]
                     }
                 else:
                     print("pizza type not found")
@@ -111,12 +98,7 @@ class CheckerNode:
                     state['messages'].append(AIMessage(content="Invalid pizza type. Please specify a valid type (e.g. a pizza Pepperoni)'."))
                     return {
                         "messages": state["messages"],
-                        "slots": state["slots"],
-                        "active_order": state["active_order"],
-                        "confirm_order": state["confirm_order"],
-                        "additional_information": state["additional_information"],
-                        "invalid": state["invalid"],
-                        "ended": state["ended"]
+                        "invalid": state["invalid"]
                     }
                     
             elif OrderSlots.CUSTOMER_ADDRESS.value in state["messages"][-1].content:
@@ -125,47 +107,28 @@ class CheckerNode:
                     state['customer address'] = True
                     return {
                         "messages": state["messages"],
-                        "slots": state["slots"],
-                        "active_order": state["active_order"],
-                        "confirm_order": state["confirm_order"],
-                        "additional_information": state["additional_information"],
-                        "customer address": state["customer address"],
-                        "ended": state["ended"]
+                        "customer address": state["customer address"]
                     }
                 else:
                     state["invalid"] = True
                     state['messages'].append(AIMessage(content="Invalid customer address. Please specify a valid address."))
                     return {
                         "messages": state["messages"],
-                        "slots": state["slots"],
-                        "active_order": state["active_order"],
-                        "confirm_order": state["confirm_order"],
-                        "additional_information": state["additional_information"],
-                        "invalid": state["invalid"],
-                        "ended": state["ended"]
+                        "invalid": state["invalid"]
                     }   
             #TODO elif for post order
         
         if not all(keyword in _input for keyword in self.order_keywords):
             state['messages'].append(AIMessage(content="Invalid order. Please specify a pizza order. Try writing 'I want to order a pizza'."))
             return {
-                "messages": state["messages"],
-                "slots": state["slots"],
-                "active_order": state["active_order"],
-                "confirm_order": state["confirm_order"],
-                "additional_information": state["additional_information"],
-                "ended": state["ended"]
+                "messages": state["messages"]
             }
         else:
             state['active_order'] = True
             # state['messages'].append(AIMessage(content="Your pizza order is valid."))
             return {
                 "messages": state["messages"],
-                "slots": state["slots"],
-                "active_order": state["active_order"],
-                "confirm_order": state["confirm_order"],
-                "additional_information": state["additional_information"],
-                "ended": state["ended"]
+                "active_order": state["active_order"]
             }
 
         
@@ -239,9 +202,7 @@ class OrderNode:
             state["messages"].append(last_function_message)
             return {
                 "messages": state["messages"],
-                "slots": state["slots"],
-                "invalid": state["invalid"],
-                "ended": state["ended"]
+                "invalid": state["invalid"]
             }
 
 
@@ -250,7 +211,6 @@ class OrderNode:
             state['ended'] = True
             return {
                 "messages": state["messages"],
-                "slots": state["slots"],
                 "ended": state["ended"]
             }
 
@@ -259,19 +219,14 @@ class OrderNode:
             state['messages'].append(AIMessage("What pizza would you like to order?"))
             state["messages"].append(FunctionMessage(content=OrderSlots.PIZZA_NAME, name=OrderSlots.PIZZA_NAME.value))
             return {
-                "messages": state["messages"],
-                "slots": state["slots"],
-                "ended": state["ended"]
+                "messages": state["messages"]
             }
         
         elif next_slot == OrderSlots.CUSTOMER_ADDRESS.value:
             state['messages'].append(AIMessage("What is your delivery address?"))
             state["messages"].append(FunctionMessage(content=OrderSlots.CUSTOMER_ADDRESS, name=OrderSlots.CUSTOMER_ADDRESS.value))
             return {
-                "messages": state["messages"],
-                "slots": state["slots"],
-                "confirm_order": state["confirm_order"],
-                "ended": state["ended"]
+                "messages": state["messages"]
             }
         
         elif next_slot == OrderSlots.ADDITIONAL_INFORMATION.value:
@@ -280,9 +235,7 @@ class OrderNode:
             state["confirm_order"] = True
             return {
                 "messages": state["messages"],
-                "confirm_order" : state["confirm_order"],
-                "slots": state["slots"],
-                "ended": state["ended"]
+                "confirm_order" : state["confirm_order"]
             }
         
         elif state['additional_information']:
@@ -290,9 +243,7 @@ class OrderNode:
                 state['messages'].append(AIMessage("What telephone number would you like to be reached at?"))
                 state["messages"].append(FunctionMessage(content=OrderSlots.CUSTOMER_TEL_NUMBER, name=OrderSlots.CUSTOMER_TEL_NUMBER.value))
                 return {
-                    "messages": state["messages"],
-                    "slots": state["slots"],
-                    "ended": state["ended"]
+                    "messages": state["messages"]
                 }
             elif next_slot == OrderSlots.DELIVERY_TIME.value:
                 state['messages'].append(AIMessage("What delivery time would you prefer?"))
@@ -300,9 +251,7 @@ class OrderNode:
                 state["additional_information"] = False
                 return {
                     "messages": state["messages"],
-                    "slots": state["slots"],
-                    "additional_information": state["additional_information"],
-                    "ended": state["ended"]
+                    "additional_information": state["additional_information"]
                 }
             
     
