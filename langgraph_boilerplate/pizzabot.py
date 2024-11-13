@@ -1,8 +1,9 @@
 from typing import TypedDict
 import requests
-from re import split, findall
+from re import split, findall, search
 
 from fuzzywuzzy import fuzz
+import spacy
 
 from langgraph.graph import END, StateGraph
 from langchain_core.messages import (
@@ -152,16 +153,30 @@ def check_pizzas(input):
     return None
 
 def check_customer_address(input):
-    match = "^\w+(\w| |\.)* \d+ \w+(\w| )*$"
-
+    #load model / TODO only load once
+    nlp = spacy.load("en_core_web_sm")
+    
+    doc = nlp(input)
+    entities = [(ent.text, ent.label_) for ent in doc.ents]
+    
+    cityEntities = [ent[0] for ent in entities if ent[1] == 'GPE']
+    
+    print("debugging: Potential GPE Entities were found: " + str(cityEntities))
+    
     # no address match found
-    if not findall(match, input):
+    if not cityEntities:
         return None
     
-    street, city = split("\d+", input)
+    city = cityEntities[0]
+    #match = "^\w+(\w| |\.)* \d+ \w+(\w| )*$"
+    #if not findall(match, input):
+    #    return None
+    
+    #TODO remove possible edge cases
+    street = split("\d(\d|\w)*", input)[0]
     street = street[:-1]
-    city = city[1:]
-    house_number = findall("\d+", input)[0]
+    #print("debugging: possible house numbers:" + str(search("(\d+\w+|\d+)", input)))
+    house_number = search("(\d+\w+|\d+)", input).group(0)
 
     post = {"city":city, "street":street, "house_number":house_number}
     response = requests.post("https://demos.swe.htwk-leipzig.de/pizza-api/address/validate", json=post) 
@@ -169,6 +184,7 @@ def check_customer_address(input):
     if response.status_code != 200:
         return None
 
+    #print("debugging: Potential Address found: " + str((city, street, house_number)))
     return (city, street, house_number)
 
 class OrderNode:
