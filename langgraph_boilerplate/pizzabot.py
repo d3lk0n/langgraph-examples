@@ -154,6 +154,7 @@ def check_pizzas(input):
 
 def check_customer_address(input):
     #load model / TODO only load once
+    #currently only load english model: TODO use german model as well (dependant on user interaction -> new states)
     nlp = spacy.load("en_core_web_sm")
     
     doc = nlp(input)
@@ -167,13 +168,15 @@ def check_customer_address(input):
     if not cityEntities:
         return None
     
+    #only use first found city
     city = cityEntities[0]
+    
     #match = "^\w+(\w| |\.)* \d+ \w+(\w| )*$"
     #if not findall(match, input):
     #    return None
     
     #TODO remove possible edge cases
-    street = split("\d(\d|\w)*", input)[0]
+    street = split("(\d+\w+|\d+)", input)[0]    
     street = street[:-1]
     #print("debugging: possible house numbers:" + str(search("(\d+\w+|\d+)", input)))
     house_number = search("(\d+\w+|\d+)", input).group(0)
@@ -387,6 +390,9 @@ if __name__ == "__main__":
     retrieval_node = RetrievalNode()
 
     workflow = StateGraph(ChatbotState)
+    #TODO set entrypoint as language detection-node
+    #either use it to set a state (enum)
+    #or route to language dependant nodes
     workflow.add_node(Nodes.CHECKER.value, checker_node.invoke)
     workflow.add_node(Nodes.RETRIEVAL.value, retrieval_node.invoke)
     workflow.add_node(Nodes.ORDER_FORM.value, order_node.invoke)
