@@ -4,6 +4,7 @@ from re import split, findall, search
 
 from fuzzywuzzy import fuzz
 import spacy
+from langdetect import detect
 
 from langgraph.graph import END, StateGraph
 from langchain_core.messages import (
@@ -30,6 +31,7 @@ class ChatbotState(TypedDict):
     pizza_id: str
     customer_address: tuple[str]
     order_id: str
+    user_language: str
 
 class Nodes(Enum):
     ENTRY = "entry"
@@ -45,6 +47,35 @@ class OrderSlots(Enum):
     ADDITIONAL_INFORMATION = "additional_information"
     CUSTOMER_TEL_NUMBER = "customer_tel_number"
     DELIVERY_TIME = "delivery_time"
+
+class SupportedLanguages(Enum):
+    ENGLISH = "english"
+    GERMAN = "german"
+
+class LanguageNode:
+    """
+    Detects language of user input.
+    """
+    
+    def __init__(self):
+        pass
+
+    def invoke(self, state: ChatbotState) -> str:
+        """
+        Returns fallback message
+        """
+        _input = state['input']
+        detected_language = detect(_input)
+        if detect=='de':
+            state["user_language"] = SupportedLanguages.GERMAN.name
+        elif detect=='en':
+            state["user_language"] = SupportedLanguages.ENGLISH.name
+        #default
+        else:                       
+            state["user_language"] = SupportedLanguages.ENGLISH.name
+
+             
+
 
 class CheckerNode:
     """
