@@ -1,6 +1,7 @@
 from typing import TypedDict
 import requests
 from re import split, findall, search
+from pathlib import Path
 
 from fuzzywuzzy import fuzz
 import spacy
@@ -184,34 +185,35 @@ def check_pizzas(input):
     return None
 
 def check_customer_address(input):
-    #load model / TODO only load once
-    #currently only load english model: TODO use german model as well (dependant on user interaction -> new states)
-    nlp = spacy.load("en_core_web_sm")
+    
+    #currently only finds model directory if running within python_examples
+    nlp = spacy.load('../spacy_address_model/model-best')
     
     doc = nlp(input)
     entities = [(ent.text, ent.label_) for ent in doc.ents]
     
-    cityEntities = [ent[0] for ent in entities if ent[1] == 'GPE']
+    #TODO choose correct entities
+    cityEntities = [ent[0] for ent in entities if ent[1] == 'CITY']
+    houseNrEntities = [ent[0] for ent in entities if ent[1] == 'HOUSE_NR']
+    streetEntities = [ent[0] for ent in entities if ent[1] == 'STREET']
     
-    print("debugging: Potential GPE Entities were found: " + str(cityEntities))
+    #print("debugging: Potential GPE Entities were found: " + str(cityEntities))
+    #print("debugging: Potential HOUSE_NR Entities were found: " + str(houseNrEntities))
+    #print("debugging: Potential STREET Entities were found: " + str(streetEntities))
     
     # no address match found
-    if not cityEntities:
+    if not cityEntities or not houseNrEntities or not streetEntities:
         return None
     
-    #only use first found city
+    #only use first found entitiy
     city = cityEntities[0]
+    street = streetEntities[0]
+    house_number = houseNrEntities[0]
     
     #match = "^\w+(\w| |\.)* \d+ \w+(\w| )*$"
     #if not findall(match, input):
     #    return None
     
-    #TODO remove possible edge cases
-    street = split("(\d+\w+|\d+)", input)[0]    
-    street = street[:-1]
-    #print("debugging: possible house numbers:" + str(search("(\d+\w+|\d+)", input)))
-    house_number = search("(\d+\w+|\d+)", input).group(0)
-
     post = {"city":city, "street":street, "house_number":house_number}
     response = requests.post("https://demos.swe.htwk-leipzig.de/pizza-api/address/validate", json=post) 
 
