@@ -2,7 +2,7 @@ from openai import OpenAI
 
 
 openai_api_key = "KEY" # Replace with the API key from a professor
-openai_api_base = "http://141.57.10.81:8082/v1"
+openai_api_base = "http://gpu01.imn.htwk-leipzig.de:8082/v1"
 
 client = OpenAI(
     api_key=openai_api_key,
