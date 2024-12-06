@@ -1,10 +1,11 @@
 from typing import TypedDict
 import requests
-from re import split, findall, search
-from pathlib import Path
+from os import environ
+from openai import OpenAI
+from dotenv import load_dotenv
+import json
 
 from fuzzywuzzy import fuzz
-import spacy
 from langdetect import detect
 
 from langgraph.graph import END, StateGraph
@@ -186,34 +187,47 @@ def check_pizzas(input):
 
 def check_customer_address(input):
     
-    #currently only finds model directory if running within python_examples
-    nlp = spacy.load('../spacy_address_model/model-best')
+    #TODO move somewhere else
+    #get open api key from .env file
+    load_dotenv()
+    openai_api_key = environ.get('OPENAI_API_KEY')
+    openai_api_base = "http://gpu01.imn.htwk-leipzig.de:8082/v1"
+
+    client = OpenAI(
+        api_key=openai_api_key,
+        base_url=openai_api_base,
+    )
     
-    doc = nlp(input)
-    entities = [(ent.text, ent.label_) for ent in doc.ents]
+    #TODO give instruciton on expected return types etc
+    #TODO use in all/most api calls or verification
+
+    #use in-context-learning
+    example_string = "My address is Gustav-Freytag Straße 12A in Leipzig."
+    assistant_docstring = """[{"Leipzig": "CITY"}, {"Gustav-Freytag Straße": "STREET"}, {"12A": "HOUSE_NUMBER"}]"""
+    chat_response = client.chat.completions.create(
+        model="meta-llama/Llama-3.1-8B-Instruct",
+        messages=[
+            {"role": "system", "content": """You are a Named Entity Recognition Tool.
+Recognize named entities and output the structured data as a JSON. **Output ONLY the structured data.**
+Below is a text for you to analyze."""},
+            {"role": "user", "content": example_string},
+            {"role": "assistant", "content": assistant_docstring},
+            {"role": "user", "content": input}
+        ]
+    )
     
-    #TODO choose correct entities
-    cityEntities = [ent[0] for ent in entities if ent[1] == 'CITY']
-    houseNrEntities = [ent[0] for ent in entities if ent[1] == 'HOUSE_NR']
-    streetEntities = [ent[0] for ent in entities if ent[1] == 'STREET']
+    receivedMessage = chat_response.choices[0].message.content
+    #receivedMessage = """[{"Leipzig": "CITY"}, {"Gustav-Freytag Straße": "STREET"}, {"12A": "HOUSE_NUMBER"}]"""
+    print(receivedMessage)
     
-    #print("debugging: Potential GPE Entities were found: " + str(cityEntities))
-    #print("debugging: Potential HOUSE_NR Entities were found: " + str(houseNrEntities))
-    #print("debugging: Potential STREET Entities were found: " + str(streetEntities))
-    
-    # no address match found
-    if not cityEntities or not houseNrEntities or not streetEntities:
-        return None
-    
-    #only use first found entitiy
-    city = cityEntities[0]
-    street = streetEntities[0]
-    house_number = houseNrEntities[0]
-    
-    #match = "^\w+(\w| |\.)* \d+ \w+(\w| )*$"
-    #if not findall(match, input):
-    #    return None
-    
+    response_dictionary = {}
+    for d in json.loads(receivedMessage):
+        response_dictionary.update(d)
+        
+    city = [k for(k , v) in response_dictionary.items() if v == "CITY"][0]
+    street = [k for (k , v) in response_dictionary.items() if v == "STREET"][0]
+    house_number = [k for (k , v) in response_dictionary.items() if v == "HOUSE_NUMBER"][0]
+
     post = {"city":city, "street":street, "house_number":house_number}
     response = requests.post("https://demos.swe.htwk-leipzig.de/pizza-api/address/validate", json=post) 
 

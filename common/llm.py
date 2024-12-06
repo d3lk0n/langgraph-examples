@@ -1,7 +1,9 @@
 from openai import OpenAI
+from dotenv import load_dotenv
+from os import environ
 
-
-openai_api_key = "KEY" # Replace with the API key from a professor
+load_dotenv()
+openai_api_key = environ.get('OPENAI_API_KEY')
 openai_api_base = "http://gpu01.imn.htwk-leipzig.de:8082/v1"
 
 client = OpenAI(
