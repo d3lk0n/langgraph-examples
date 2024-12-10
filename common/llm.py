@@ -1,8 +1,13 @@
 from openai import OpenAI
+from os import environ
+from dotenv import load_dotenv
 
 
-openai_api_key = "KEY" # Replace with the API key from a professor
-openai_api_base = "http://gpu01.imn.htwk-leipzig.de:8082/v1"
+load_dotenv() # create .env file locally
+
+openai_api_key = environ.get('OPENAI_API_KEY') # Set up with the API key provided by your professor
+openai_api_base = environ.get('OPENAI_API_BASE') # Set up with the URL provided by your professor
+model_name = environ.get("MODEL_NAME") # Set up with the currently deployed model (check via HTTP GET to BASE_URL + "/v1/models")
 
 client = OpenAI(
     api_key=openai_api_key,
@@ -10,7 +15,7 @@ client = OpenAI(
 )
 
 chat_response = client.chat.completions.create(
-    model="meta-llama/Llama-3.1-8B-Instruct",
+    model=model_name,
     messages=[
         {"role": "system", "content": """You are a Named Entity Recognition Tool.
 Recognize named entities and output the structured data as a JSON. **Output ONLY the structured data.**
