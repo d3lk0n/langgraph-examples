@@ -5,6 +5,7 @@ The majority of this code was written by @AnnemarieWittig within: https://github
 ## How to train
 
 ```bash
+python3 generate_spacy_data.py
 python3 -m spacy train ./config/config.cfg --paths.train ./corpus/spacy-docbins/train.spacy --paths.dev ./corpus/spacy-docbins/test.spacy --output ./
 ```
 
