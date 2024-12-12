@@ -191,7 +191,10 @@ def check_customer_address(input):
     #get open api key from .env file
     load_dotenv()
     openai_api_key = environ.get('OPENAI_API_KEY')
-    openai_api_base = "http://gpu01.imn.htwk-leipzig.de:8082/v1"
+    openai_api_base = "http://gpu01.imn.htwk-leipzig.de:8081/v1"
+    
+    #get model from http://gpu01.imn.htwk-leipzig.de:8081/v1/models
+    
 
     client = OpenAI(
         api_key=openai_api_key,
@@ -205,7 +208,7 @@ def check_customer_address(input):
     example_string = "My address is Gustav-Freytag Straße 12A in Leipzig."
     assistant_docstring = """[{"Leipzig": "CITY"}, {"Gustav-Freytag Straße": "STREET"}, {"12A": "HOUSE_NUMBER"}]"""
     chat_response = client.chat.completions.create(
-        model="meta-llama/Llama-3.1-8B-Instruct",
+        model="Qwen/Qwen2.5-72B-Instruct-AWQ",
         messages=[
             {"role": "system", "content": """You are a Named Entity Recognition Tool.
 Recognize named entities and output the structured data as a JSON. **Output ONLY the structured data.**
