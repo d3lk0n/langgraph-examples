@@ -149,7 +149,7 @@ def check_order_intention(_input):
     assistant_docstring_2 = """{"intention": False}"""
 
     chat_response = client.chat.completions.create(
-        model=environ.get("OPENAI_MODEL"),
+        model=environ.get("MODEL_NAME"),
         messages=[
             {"role": "system", "content": """You are an Input Validation Tools.
 Recognize whether the user wants to order a pizza or he/she has another intention and output the structured data as a JSON. **Output ONLY the structured data.**
@@ -177,7 +177,7 @@ def check_description_intention(_input):
     assistant_docstring_2 = """{"intention": False}"""
 
     chat_response = client.chat.completions.create(
-        model=environ.get("OPENAI_MODEL"),
+        model=environ.get("MODEL_NAME"),
         messages=[
             {"role": "system", "content": """You are an Input Validation Tools.
 Recognize whether the user wants receive further information about a specific pizza or he/she has another intention and output the structured data as a JSON. **Output ONLY the structured data.**
@@ -224,7 +224,7 @@ def check_customer_address(input):
     
     #get current model from http://gpu01.imn.htwk-leipzig.de:8081/v1/models
     chat_response = client.chat.completions.create(
-        model=environ.get('OPENAI_MODEL'),
+        model=environ.get('MODEL_NAME'),
         messages=[
             {"role": "system", "content": """You are a Named Entity Recognition Tool.
 Recognize named entities and output the structured data as a JSON. **Output ONLY the structured data.**
