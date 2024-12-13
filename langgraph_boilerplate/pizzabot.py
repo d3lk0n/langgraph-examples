@@ -15,6 +15,22 @@ from langchain_core.messages import (
 )
 from enum import Enum
 
+client = None
+
+def load_llm():
+    
+    load_dotenv()
+    openai_api_key = environ.get('OPENAI_API_KEY')
+    openai_api_base = environ.get('OPENAI_API_BASE')
+    
+    #get model from http://gpu01.imn.htwk-leipzig.de:8081/v1/models
+
+    #TODO probably a hack
+    global client 
+    client = OpenAI(
+        api_key=openai_api_key,
+        base_url=openai_api_base,
+    )
 
 class ChatbotState(TypedDict):
     """
@@ -26,6 +42,7 @@ class ChatbotState(TypedDict):
     slots: dict
     messages: list
     active_order: bool
+    give_description: bool
     confirm_order: bool
     additional_information: bool
     invalid: bool
@@ -38,6 +55,7 @@ class ChatbotState(TypedDict):
 class Nodes(Enum):
     ENTRY = "entry"
     CHECKER = "checker"
+    DESCRIPTION = "description"
     ORDER_FORM = "order_form"
     RETRIEVAL = "retrieval"
     END = "end"
@@ -76,9 +94,6 @@ class LanguageNode:
         else:                       
             state["user_language"] = SupportedLanguages.ENGLISH.name
 
-             
-
-
 class CheckerNode:
     """
     This node checks whether user input is valid
@@ -94,10 +109,6 @@ class CheckerNode:
         Checks whether the input is a valid request for pizza order
         """
         _input = state['input']
-        
-        ## current idea:
-        ## state __ missing -> ask for it -> and so on, only in active order
-        ## after active order, confirm order
         
         if state['confirm_order']:
             if not any(keyword in _input for keyword in self.confirm_keywords):
@@ -118,8 +129,13 @@ class CheckerNode:
         # add constraints for additional info
         
         if state['active_order']:
-            #TODO instead check whether states pizza_id, customer_address... are valid
             if OrderSlots.PIZZA_NAME.value in state["messages"][-1].content:
+                if check_description_intention(_input):
+                    state["give_description"] = True
+                    return {
+                        "messages": state["messages"],
+                        "give_description": state["give_description"]
+                    }
                 pizza_id = check_pizzas(_input)
                 if pizza_id is not None:
                     #found pizza type
@@ -152,28 +168,85 @@ class CheckerNode:
                         "invalid": state["invalid"]
                     }
         
-        if not all(keyword in _input for keyword in self.order_keywords):
-            state['messages'].append(AIMessage(content="Invalid order. Please specify a pizza order. Try writing 'I want to order a pizza'."))
-            return {
-                "messages": state["messages"]
-            }
-        else:
+        #no other dialogue state -> implicit begin of conversation
+        if check_order_intention(_input):
             state['active_order'] = True
             # state['messages'].append(AIMessage(content="Your pizza order is valid."))
             return {
                 "messages": state["messages"],
                 "active_order": state["active_order"]
             }
+        else:
+            state['messages'].append(AIMessage(content="Invalid order. Please specify a pizza order. Try writing 'I want to order a pizza'."))
+            return {
+                "messages": state["messages"]
+            }
     
     def route(self, state: ChatbotState) -> str:
         """
         Routes to the next node
         """
+        #TODO add condition to route into description node
+        if state['give_description']:
+            return Nodes.DESCRIPTION.value
         if state['active_order']:
             return Nodes.RETRIEVAL.value
         else:
             return END
 
+def check_order_intention(_input):
+    example_string_1 = "I wanna order a pizza."
+    assistant_docstring_1 = """{"intention": True}"""
+
+    example_string_2 = "How are you doing today?"
+    assistant_docstring_2 = """{"intention": False}"""
+
+    chat_response = client.chat.completions.create(
+        model=environ.get("OPENAI_MODEL"),
+        messages=[
+            {"role": "system", "content": """You are an Input Validation Tools.
+Recognize whether the user wants to order a pizza or he/she has another intention and output the structured data as a JSON. **Output ONLY the structured data.**
+Below is a text for you to analyze."""},
+            {"role": "user", "content": example_string_1},
+            {"role": "assistant", "content": assistant_docstring_1},
+            {"role": "user", "content": example_string_2},
+            {"role": "assistant", "content": assistant_docstring_2},
+            {"role": "user", "content": _input}
+        ]
+    )
+    
+    received_message = chat_response.choices[0].message.content
+    
+    #TODO use actual logging while in debug
+    #logger.info(received_message)
+    
+    return eval(received_message)["intention"]
+
+def check_description_intention(_input):
+    example_string_1 = "What is a Pizza Hawaiian?"
+    assistant_docstring_1 = """{"intention": True}"""
+
+    example_string_2 = "I want to order a pizza Pepperoni?"
+    assistant_docstring_2 = """{"intention": False}"""
+
+    chat_response = client.chat.completions.create(
+        model=environ.get("OPENAI_MODEL"),
+        messages=[
+            {"role": "system", "content": """You are an Input Validation Tools.
+Recognize whether the user wants receive further information about a specific pizza or he/she has another intention and output the structured data as a JSON. **Output ONLY the structured data.**
+Below is a text for you to analyze."""},
+            {"role": "user", "content": example_string_1},
+            {"role": "assistant", "content": assistant_docstring_1},
+            {"role": "user", "content": example_string_2},
+            {"role": "assistant", "content": assistant_docstring_2},
+            {"role": "user", "content": _input}
+        ]
+    )
+    
+    received_message = chat_response.choices[0].message.content
+    
+    return eval(received_message)["intention"]
+    
 def check_pizzas(input):
     threshold = 80
     response = requests.get("https://demos.swe.htwk-leipzig.de/pizza-api/pizza")
@@ -186,15 +259,9 @@ def check_pizzas(input):
     return None
 
 def check_customer_address(input):
-    
-    #TODO move somewhere else
-    #get open api key from .env file
     load_dotenv()
     openai_api_key = environ.get('OPENAI_API_KEY')
-    openai_api_base = "http://gpu01.imn.htwk-leipzig.de:8081/v1"
-    
-    #get model from http://gpu01.imn.htwk-leipzig.de:8081/v1/models
-    
+    openai_api_base = environ.get('OPENAI_API_BASE')
 
     client = OpenAI(
         api_key=openai_api_key,
@@ -207,8 +274,10 @@ def check_customer_address(input):
     #use in-context-learning
     example_string = "My address is Gustav-Freytag Straße 12A in Leipzig."
     assistant_docstring = """[{"Leipzig": "CITY"}, {"Gustav-Freytag Straße": "STREET"}, {"12A": "HOUSE_NUMBER"}]"""
+    
+    #get current model from http://gpu01.imn.htwk-leipzig.de:8081/v1/models
     chat_response = client.chat.completions.create(
-        model="Qwen/Qwen2.5-72B-Instruct-AWQ",
+        model=environ.get('OPENAI_MODEL'),
         messages=[
             {"role": "system", "content": """You are a Named Entity Recognition Tool.
 Recognize named entities and output the structured data as a JSON. **Output ONLY the structured data.**
@@ -226,7 +295,12 @@ Below is a text for you to analyze."""},
     response_dictionary = {}
     for d in json.loads(receivedMessage):
         response_dictionary.update(d)
-        
+    
+    necessary_fields = ["CITY", "STREET", "HOUSE_NUMBER"]    
+    #TODO do proper logging of errors
+    if not response_dictionary or not all(value in set(necessary_fields) for value in response_dictionary.values()):
+        return None
+
     city = [k for(k , v) in response_dictionary.items() if v == "CITY"][0]
     street = [k for (k , v) in response_dictionary.items() if v == "STREET"][0]
     house_number = [k for (k , v) in response_dictionary.items() if v == "HOUSE_NUMBER"][0]
@@ -295,9 +369,20 @@ class OrderNode:
                     "invalid": state["invalid"]
                 } 
 
-
         if next_slot == OrderSlots.PIZZA_NAME.value:
-            state['messages'].append(AIMessage("What pizza would you like to order?"))
+            
+            #TODO also give possibility to ask for pizza description
+            if not state["give_description"]:    
+                response = requests.get("https://demos.swe.htwk-leipzig.de/pizza-api/pizza")
+                menu = response.json()
+                menu_str = ""
+                
+                for item in menu:
+                    menu_str += item["name"] + ", "
+                menu_str = menu_str[:-2]    
+            
+                state['messages'].append(AIMessage("What pizza would you like to order? We are currently delivering the following items: " + menu_str + 
+                                                   ".\n We can also provide further information about a pizza item, if you any questions."))
             state["messages"].append(FunctionMessage(content=OrderSlots.PIZZA_NAME, name=OrderSlots.PIZZA_NAME.value))
             return {
                 "messages": state["messages"]
@@ -340,6 +425,7 @@ class OrderNode:
 def post_order(pizza_id, address):
     city, street, house_number = address
     post = {"pizza_id":pizza_id, "city":city, "street":street, "house_number":house_number}
+    #TODO extract base URL into .env
     response = requests.post("https://demos.swe.htwk-leipzig.de/pizza-api/order", json=post)
 
     if response.status_code != 200:
@@ -353,23 +439,10 @@ def post_order(pizza_id, address):
     
     return order_id
     
-
-    
 def get_order(order_id):
     response = requests.get("https://demos.swe.htwk-leipzig.de/pizza-api/address/validate/" + order_id)
     order = response.json()
     #TODO return order information if asked
-
-
-
-
-# TODO Question:
-# Do the RetrievalNode and CheckerNode have to do the same kind of "verification" of user input? 
-# The CheckerNode checks whether the original user input is valid by transforming it (i.e. by regex)
-# The RetrievalNode would also get the original, untransformed user input (and thus would also need to transform it, to correctly extract relevant information)
-# 
-# Currently I'm using the RetrievalNode as a List of valid user input with the corresponding context (function message)
-# This List is never queried though...
 
 class RetrievalNode:
     """
@@ -385,6 +458,7 @@ class RetrievalNode:
         """
         last_message = state["messages"][-1] if len(state["messages"]) > 0 else "No message"
 
+        #TODO instead don't enter RetrievalNode in case of inactive Order move into routing
         if not state['active_order'] or not isinstance(last_message, FunctionMessage):
             return {
                 "messages": state["messages"],
@@ -394,8 +468,7 @@ class RetrievalNode:
         
         _input = state['input'].lower()
 
-        #TODO move input saving into here
-
+        #'slots' used to handle missing<->required fields
         if last_message.content == OrderSlots.PIZZA_NAME.value:
             state['slots'][OrderSlots.PIZZA_NAME.value] = _input
             return {
@@ -432,45 +505,93 @@ class RetrievalNode:
                 "ended": state["ended"]
             }
         
+class DescriptionNode:
+    """
+    This node collects information about pizza's
+    """
+    
+    def __init__(self):
+        pass
+
+    def invoke(self, state: ChatbotState) -> str:
+        """
+        Resolves additional information about pizza items
+        """
+        
+        _input = state['input'].lower()
+
+        #determine which pizza user want to get information for
+        
+        pizza_name = resolve_pizza(_input)
+        pizza_description = resolve_description(pizza_name)
+        
+        state['messages'].append(AIMessage("Further Information about Pizza " + pizza_name + ": " + pizza_description))
+        state["messages"].append(FunctionMessage(content=OrderSlots.PIZZA_NAME, name=OrderSlots.PIZZA_NAME.value))
+        state["give_description"] = False
+        return {
+            "messages": state["messages"],
+            "give_description": state["give_description"]
+        }
+        
+    #def route(self, state: ChatbotState) -> str:
+    #TODO necessary?
+
+def resolve_pizza(_input):
+    #TODO resolve pizza name
+    return "Standard"
+
+def resolve_description(_input):
+    #TODO resolve pizza description through sparql
+    return "Standard Description"
 
 if __name__ == "__main__":
     # Initialize nodes
     order_node = OrderNode()
     checker_node = CheckerNode()
     retrieval_node = RetrievalNode()
+    description_node = DescriptionNode()
 
     workflow = StateGraph(ChatbotState)
     #TODO set entrypoint as language detection-node
     #either use it to set a state (enum)
     #or route to language dependant nodes
     workflow.add_node(Nodes.CHECKER.value, checker_node.invoke)
+    #TODO try removing retrieval node -> input saving is already done within dialogue state
     workflow.add_node(Nodes.RETRIEVAL.value, retrieval_node.invoke)
     workflow.add_node(Nodes.ORDER_FORM.value, order_node.invoke)
+    workflow.add_node(Nodes.DESCRIPTION.value, description_node.invoke)
 
     workflow.add_conditional_edges(
         Nodes.CHECKER.value,
         checker_node.route,
         {
             Nodes.RETRIEVAL.value: Nodes.RETRIEVAL.value,
+            Nodes.DESCRIPTION.value: Nodes.DESCRIPTION.value,
             END: END,
         }
     )
+
+    #don't enter retrieval node from description -> "missing slots" doesn't get updated
+    workflow.add_edge(Nodes.DESCRIPTION.value, END)
     workflow.add_edge(Nodes.RETRIEVAL.value, Nodes.ORDER_FORM.value)
     workflow.add_edge(Nodes.ORDER_FORM.value, END)
     
     workflow.set_entry_point(Nodes.CHECKER.value)
     graph = workflow.compile()
-
+    
+    # load llm
+    load_llm()
+    
     # START DIALOGUE: first message
     print("-- Chatbot: ", "Hi! I am a pizza bot. I can help you order a pizza. What would you like to order?")
     user_input = input("-> Your response: ")
-    outputs = graph.invoke({"input": user_input, "slots": {}, "messages": [], "active_order": False, "confirm_order":False, "additional_information":False, "pizza_id":None, "customer_address":None, "invalid":False, "ended": False})
+    outputs = graph.invoke({"input": user_input, "slots": {}, "messages": [], "active_order": False, "confirm_order":False, "give_description":False, "additional_information":False, "pizza_id":None, "customer_address":None, "invalid":False, "ended": False})
 
     while True:
         print("-- Chatbot: ", [m.content for m in outputs["messages"] if isinstance(m, AIMessage) ][-1]) # print chatbot response
         user_input = input("-> Your response: ")
 
-        outputs = graph.invoke({"input": user_input, "slots": outputs["slots"], "messages": outputs["messages"], "active_order": outputs["active_order"], "confirm_order":outputs["confirm_order"], "additional_information":outputs["additional_information"], "pizza_id":outputs["pizza_id"], "customer_address":outputs["customer_address"], "invalid":outputs["invalid"], "ended": outputs["ended"]})
+        outputs = graph.invoke({"input": user_input, "slots": outputs["slots"], "messages": outputs["messages"], "active_order": outputs["active_order"], "confirm_order":outputs["confirm_order"], "give_description":outputs["give_description"], "additional_information":outputs["additional_information"], "pizza_id":outputs["pizza_id"], "customer_address":outputs["customer_address"], "invalid":outputs["invalid"], "ended": outputs["ended"]})
 
         # check if the conversation has ended
         if outputs["ended"]:
