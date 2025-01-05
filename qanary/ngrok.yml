@@ -1,0 +1,10 @@
+version: "2"
+
+tunnels:
+  tunnel1:
+    addr: 40120
+    proto: http 
+
+  tunnel2:
+    addr: 40121
+    proto: http

@@ -1,10 +1,10 @@
 version: '3'
 services:
-  qanary-component-nel-python-wikidata-lookup: # for building from source
+  qanary-component-qb-wikidata: # for building from source
     build:
       context: .
       dockerfile: Dockerfile
     env_file:
       - .env
-    container_name: "NEL-Wikidata-Lookup"
+    container_name: "QB-Wikidata"
     network_mode: host # usage of ports also possible
