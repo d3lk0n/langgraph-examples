@@ -1,0 +1,26 @@
+version: '3'
+services:
+  qanary-component-qb-wikidata: # for building from source
+    build:
+      context: ./Qanary-Component-QueryBuilder-Wikidata
+      dockerfile: Dockerfile
+    env_file:
+      - ./Qanary-Component-QueryBuilder-Wikidata/.env
+    container_name: "QB-Wikidata"
+    network_mode: host # usage of ports also possible
+  qanary-component-nel-python-wikidata-lookup: # for building from source
+    build:
+      context: ./Qanary-Component-NEL-WikidataLookup
+      dockerfile: Dockerfile
+    env_file:
+      - ./Qanary-Component-NEL-WikidataLookup/.env
+    container_name: "NEL-Wikidata-Lookup"
+    network_mode: host # usage of ports also possible
+  qanary-component-qe-sparqlexecuter: # this component was already created by someone and pushed to dockerhub
+    build:
+      context: ./Qanary-Сomponent-QE-SparqlExecuter
+      dockerfile: Dockerfile
+    network_mode: host # or use ports
+    container_name: "QE-SparqlExecuter"
+    env_file: 
+     - ./Qanary-component-QE-SparqlExecuter/.env
