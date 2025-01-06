@@ -18,7 +18,6 @@ SERVICE_NAME_COMPONENT = os.environ['SERVICE_NAME_COMPONENT']
 ENDPOINT = os.environ['SPARQL_ENDPOINT']
 
 headers = {'Content-Type': 'application/json'}
-agent_header = str(os.getenv("AGENT_HEADER"))
 dummy_answers = {
     "head": {
         "link": [],
@@ -45,7 +44,6 @@ def execute(query: str, endpoint_url: str = ENDPOINT):
     """
     try:
         sparql = SPARQLWrapper(endpoint_url)
-        sparql.agent = str(agent_header)
         sparql.setQuery(query)
         sparql.setReturnFormat(JSON)
         response = sparql.query().convert()
@@ -69,12 +67,12 @@ async def qanary_service(request: Request):
     sparql = """
     PREFIX qa: <http://www.wdaqua.eu/qa#> 
     PREFIX oa: <http://www.w3.org/ns/openannotation/core/> 
+    PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
     SELECT ?sparql 
     FROM <{uuid}> 
     WHERE {{ 
-        ?a a qa:AnnotationOfAnswerSPARQL ;
-           qa:hasScore ?score ; 
-           oa:annotatedAt ?time .
+        ?a rdf:type qa:AnnotationOfAnswerSPARQL .
         OPTIONAL {{ ?a oa:hasBody ?sparql }} 
     }}
     ORDER BY DESC(?score) LIMIT 1

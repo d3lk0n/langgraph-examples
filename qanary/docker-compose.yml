@@ -23,4 +23,4 @@ services:
     network_mode: host # or use ports
     container_name: "QE-SparqlExecuter"
     env_file: 
-     - ./Qanary-component-QE-SparqlExecuter/.env
+     - ./Qanary-Сomponent-QE-SparqlExecuter/.env
