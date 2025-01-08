@@ -62,9 +62,9 @@ docker compose build && docker compose up
 
 ### Start the Qanary pipeline
 
-Fortunately, we have a pre-built and deployed Qanary pipeline that you can use to test the components. You can access it here: [Qanary Pipeline](http://demos.swe.htwk-leipzig.de:40110/)
+Fortunately, we have a pre-built and deployed Qanary pipeline that you can use to test the components. You can access it here: [Qanary Pipeline](http://demos.swe.htwk-leipzig.de:40111/)
 
-Test your questions via [this](http://demos.swe.htwk-leipzig.de:40110/) interface:
+Test your questions via [this](http://demos.swe.htwk-leipzig.de:40111/) interface:
 
 ![](https://raw.githubusercontent.com/WSE-research/langgraph-examples/refs/heads/main/qanary/img/qanary-test.jpg)
 
