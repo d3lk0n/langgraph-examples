@@ -17,11 +17,18 @@ logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
 if not os.getenv("PRODUCTION"):
     from dotenv import load_dotenv
-    load_dotenv() # required for debugging outside Docker
-    
+    load_dotenv()  # required for debugging outside Docker
+
 SERVICE_NAME_COMPONENT = os.environ['SERVICE_NAME_COMPONENT']
-MIN_NGRAM = int(os.environ['MIN_NGRAM'])
-MAX_NGRAM = int(os.environ['MAX_NGRAM'])
+if os.environ.get('MIN_NGRAM'):
+    MIN_NGRAM = int(os.environ['MIN_NGRAM'])
+else:
+    MIN_NGRAM = 2
+
+if os.environ.get('MAX_NGRAM'):
+    MAX_NGRAM = int(os.environ['MAX_NGRAM'])
+else:
+    MAX_NGRAM = 4
 
 headers = {'Content-Type': 'application/json'}
 
@@ -30,29 +37,32 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
-def search_entity(query: str, lang: str = "en", search_limit: int = 3):
-  wdt_search_url = "https://www.wikidata.org/w/api.php?action=wbsearchentities&search={search}&format=json&language={lang}&uselang={lang}&type=item&limit={search_limit}"
-  try:
-    response = requests.get(wdt_search_url.format(search=query, lang=lang, search_limit=search_limit), timeout=20)
-    data = response.json()
-    ne_list = []
-    for entity in data["search"]:
-        wdt_id = entity["id"]
-        ne_list.append(f"http://www.wikidata.org/entity/{wdt_id}")
 
-    return ne_list
-  except Exception as e:
-    print(str(e))
-    return []
-  
+def search_entity(query: str, lang: str = "en", search_limit: int = 3):
+    wdt_search_url = "https://www.wikidata.org/w/api.php?action=wbsearchentities&search={search}&format=json&language={lang}&uselang={lang}&type=item&limit={search_limit}"
+    try:
+        response = requests.get(wdt_search_url.format(
+            search=query, lang=lang, search_limit=search_limit), timeout=20)
+        data = response.json()
+        ne_list = []
+        for entity in data["search"]:
+            wdt_id = entity["id"]
+            ne_list.append(f"http://www.wikidata.org/entity/{wdt_id}")
+
+        return ne_list
+    except Exception as e:
+        print(str(e))
+        return []
+
+
 def generate_ngrams(text, min_n, max_n):
     stop_words = set(stopwords.words('english'))
 
     def clean_text(text):
-      text = re.sub(r'[^a-zA-Z0-9\s]', '', text)
-      words = text.split()
-      words = [word for word in words if word.lower() not in stop_words]
-      return ' '.join(words)
+        text = re.sub(r'[^a-zA-Z0-9\s]', '', text)
+        words = text.split()
+        words = [word for word in words if word.lower() not in stop_words]
+        return ' '.join(words)
 
     text = clean_text(text)
     words = text.split()
@@ -62,15 +72,18 @@ def generate_ngrams(text, min_n, max_n):
             ngrams.append(' '.join(words[i:i+n]))
     return ngrams
 
+
 @router.post("/annotatequestion")
 async def qanary_service(request: Request):
     request_json = await request.json()
     triplestore_endpoint_url = request_json["values"]["urn:qanary#endpoint"]
     triplestore_ingraph_uuid = request_json["values"]["urn:qanary#inGraph"]
-    
+
     # get question text from triplestore
-    question_text = get_text_question_in_graph(triplestore_endpoint_url, triplestore_ingraph_uuid)[0]['text']
-    question_uri = get_text_question_in_graph(triplestore_endpoint=triplestore_endpoint_url, graph=triplestore_ingraph_uuid)[0]['uri']
+    question_text = get_text_question_in_graph(
+        triplestore_endpoint_url, triplestore_ingraph_uuid)[0]['text']
+    question_uri = get_text_question_in_graph(
+        triplestore_endpoint=triplestore_endpoint_url, graph=triplestore_ingraph_uuid)[0]['uri']
 
     logging.info(f"Querying Wikidata Lookup for question: {question_text}")
 
@@ -119,4 +132,4 @@ async def qanary_service(request: Request):
 
 @router.get("/health")
 def health():
-    return PlainTextResponse(content="alive") 
+    return PlainTextResponse(content="alive")
