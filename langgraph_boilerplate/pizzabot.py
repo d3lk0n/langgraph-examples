@@ -2,6 +2,7 @@ from typing import TypedDict
 import requests
 from os import environ
 from openai import OpenAI
+from SPARQLWrapper import SPARQLWrapper, JSON
 from dotenv import load_dotenv
 import json
 
@@ -15,6 +16,7 @@ from langchain_core.messages import (
 from enum import Enum
 
 client = None
+cached_description = None
 
 def load_llm():
     
@@ -421,9 +423,17 @@ class DescriptionNode:
         #determine which pizza user want to get information for
         
         pizza_name = resolve_pizza(_input)
-        pizza_description = resolve_description(pizza_name)
+        pizza_description = resolve_description(_input)
+
         
-        state['messages'].append(AIMessage("Further Information about Pizza " + pizza_name + ": " + pizza_description))
+        if not pizza_description:
+            #TODO give_description necessary?
+            return {
+                "messages": state["messages"]
+            }
+        
+        state['messages'].append(AIMessage("Further Information about '" + pizza_name + "': " + pizza_description 
+                                           + "\n What would you like to order or would you like more information on another pizza type?"))
         state["messages"].append(FunctionMessage(content=OrderSlots.PIZZA_NAME, name=OrderSlots.PIZZA_NAME.value))
         state["give_description"] = False
         return {
@@ -434,13 +444,120 @@ class DescriptionNode:
     #def route(self, state: ChatbotState) -> str:
     #TODO necessary?
 
-def resolve_pizza(_input):
-    #TODO resolve pizza name
-    return "Standard"
 
 def resolve_description(_input):
-    #TODO resolve pizza description through sparql
-    return "Standard Description"
+    
+    description_query = """
+PREFIX schema: <http://schema.org/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT * WHERE {
+    ?pizza wdt:P31 wd:Q116392487 . # get all entities URIs that are an instance of the pizza type 
+    ?pizza rdfs:label ?label .     # get the names of the pizza
+      FILTER (lang(?label) = 'en')   # fitler for English pizza names only
+    ?pizza schema:description ?description # get the descriptions of the pizza
+      FILTER (lang(?description) = 'en')     # fitler for English pizza description only
+} 
+ORDER BY ?label # sort by name
+"""
+    
+    result = execute_sparql(description_query) if not cached_description else cached_description
+    #TODO proper error handling
+    if "error" in result:
+        return
+    
+    pizza_desc_pairs = []
+    for dictionary in result["results"]["bindings"]:
+        pizza_desc_pairs.append(str(dictionary['label']['value']) +':'+ str(dictionary['description']['value']))
+        
+    desc = resolve_description_for_pizza(_input, pizza_desc_pairs)
+    
+    return desc
+
+
+def resolve_description_for_pizza(_input, pizza_desc_pairs):
+    example_input_1 = "I want to know more about a Margherita"
+    example_string_1 = """["'Magherita':'A pizza with only tomato sauce and cheese'","'Hawaiian':'a pizza with pineapples and ham'","'Pepperoni':'A pizza with pepperoni slices and tomato sauce'"]"""
+    assistant_docstring_1 = """{"desc": "A pizza with only tomato sauce and cheese"}"""
+
+    chat_response = client.chat.completions.create(
+        model=environ.get("MODEL_NAME"),
+        messages=[
+            {"role": "system", "content": """You are an Input Detection Tool.
+Recognize which pizza from a selected amount of labels, the user has selected and return the description for that pizza and output the structured data as a JSON. **Output ONLY the structured data.**
+Below is a text for you to analyze."""},
+            {"role": "user", "content": example_input_1 + ";" + example_string_1},
+            {"role": "assistant", "content": assistant_docstring_1},
+            {"role": "user", "content": _input + ";" + str(pizza_desc_pairs)}
+        ]
+    )
+    
+    received_message = chat_response.choices[0].message.content
+    
+    #TODO use actual logging while in debug
+    #logger.info(received_message)
+    
+    return eval(received_message)["desc"]
+
+
+def resolve_pizza(_input):
+    
+    #TODO add correct labels
+    #requires the example pizzas to be within the result set
+    example_string_1 = "I want to know more about a Margherita."
+    assistant_docstring_1 = """{"pizza": "Margherita"}"""
+
+    example_string_2 = "What are the toppings on a pizza Pepperoni."
+    assistant_docstring_2 = """{"pizza": "Pepperoni"}"""
+
+    example_string_3 = "What's a Chicaco style."
+    assistant_docstring_3 = """{"pizza": "Chicago style pizza"}"""
+
+
+    chat_response = client.chat.completions.create(
+        model=environ.get("MODEL_NAME"),
+        messages=[
+            {"role": "system", "content": """You are an Input Detection Tool.
+Recognize which pizza from a given input, the user has selected or he/she has another intention and output the structured data as a JSON. **Output ONLY the structured data.**
+Below is a text for you to analyze."""},
+            {"role": "user", "content": example_string_1},
+            {"role": "assistant", "content": assistant_docstring_1},
+            {"role": "user", "content": example_string_2},
+            {"role": "assistant", "content": assistant_docstring_2},
+            {"role": "user", "content": example_string_3},
+            {"role": "assistant", "content": assistant_docstring_3},
+            {"role": "user", "content": _input}
+        ]
+    )
+    
+    received_message = chat_response.choices[0].message.content
+    
+    #TODO use actual logging while in debug
+    #logger.info(received_message)
+    
+    return eval(received_message)["pizza"]
+    
+def execute_sparql(query: str, endpoint_url: str = 'https://query.wikidata.org/bigdata/namespace/wdq/sparql'):
+    """
+    https://query.wikidata.org/bigdata/namespace/wdq/sparql
+    """
+    try:
+        #TODO cache awnsers to file? (once per day) -> otherwise HTTP Code too many requests
+        #for now once per session
+        sparql = SPARQLWrapper(endpoint_url)
+        sparql.timeout = 20
+        sparql.setQuery(query)
+        sparql.setReturnFormat(JSON)
+        response = sparql.query().convert()
+        return response
+    except Exception as e:
+        #TODO logging
+        #logger.error(str(e))
+        if 'MalformedQueryException' in e or 'bad formed' in e:
+            return {'error': str(e)}
+        return {'error': str(e)}
 
 if __name__ == "__main__":
     # Initialize nodes
