@@ -2,4 +2,5 @@ langchain_core==0.3.12
 langgraph==0.2.39
 python-dotenv==1.0.1
 SPARQLWrapper==2.0.0
+streamlit==1.41.1
 openai==1.59.7

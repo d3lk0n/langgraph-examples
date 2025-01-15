@@ -135,7 +135,6 @@ class CheckerNode:
         """
         Routes to the next node
         """
-        #TODO add condition to route into description node
         if state['give_description']:
             return Nodes.DESCRIPTION.value
         if state['active_order']:
@@ -208,21 +207,13 @@ def check_pizzas(input):
     return None
 
 def check_customer_address(input):
-    load_dotenv()
-    openai_api_key = environ.get('OPENAI_API_KEY')
-    openai_api_base = environ.get('OPENAI_API_BASE')
-
-    client = OpenAI(
-        api_key=openai_api_key,
-        base_url=openai_api_base,
-    )
-    
-    #TODO give instruciton on expected return types etc
-    #TODO use in all/most api calls or verification
-
     #use in-context-learning
-    example_string = "My address is Gustav-Freytag Straße 12A in Leipzig."
-    assistant_docstring = """[{"Leipzig": "CITY"}, {"Gustav-Freytag Straße": "STREET"}, {"12A": "HOUSE_NUMBER"}]"""
+    example_string1 = "My address is Gustav-Freytag Straße 12A in Leipzig."
+    assistant_docstring1 = """[{"Leipzig": "CITY"}, {"Gustav-Freytag Straße": "STREET"}, {"12A": "HOUSE_NUMBER"}]"""
+    
+    example_string2 = "Leipziger Str. 3, Halle"
+    assistant_docstring2 = """[{"Halle": "CITY"}, {"Leipziger Str.": "STREET"}, {"3": "HOUSE_NUMBER"}]"""
+    
     
     #get current model from http://gpu01.imn.htwk-leipzig.de:8081/v1/models
     chat_response = client.chat.completions.create(
@@ -231,19 +222,26 @@ def check_customer_address(input):
             {"role": "system", "content": """You are a Named Entity Recognition Tool.
 Recognize named entities and output the structured data as a JSON. **Output ONLY the structured data.**
 Below is a text for you to analyze."""},
-            {"role": "user", "content": example_string},
-            {"role": "assistant", "content": assistant_docstring},
+            {"role": "user", "content": example_string1},
+            {"role": "assistant", "content": assistant_docstring1},
+            {"role": "user", "content": example_string2},
+            {"role": "assistant", "content": assistant_docstring2},
             {"role": "user", "content": input}
         ]
     )
     
     receivedMessage = chat_response.choices[0].message.content
     #receivedMessage = """[{"Leipzig": "CITY"}, {"Gustav-Freytag Straße": "STREET"}, {"12A": "HOUSE_NUMBER"}]"""
-    print(receivedMessage)
+    #print(receivedMessage)
     
     response_dictionary = {}
-    for d in json.loads(receivedMessage):
-        response_dictionary.update(d)
+    try:
+        for d in json.loads(receivedMessage):
+            response_dictionary.update(d)
+    except Exception as e:
+        #TODO log error
+        pass
+        
     
     necessary_fields = ["CITY", "STREET", "HOUSE_NUMBER"]    
     #TODO do proper logging of errors
@@ -432,18 +430,14 @@ class DescriptionNode:
                 "messages": state["messages"]
             }
         
-        state['messages'].append(AIMessage("Further Information about '" + pizza_name + "': " + pizza_description 
-                                           + "\n What would you like to order or would you like more information on another pizza type?"))
+        state['messages'].append(AIMessage("Further Information about '" + pizza_name + "': " + pizza_description + "."
+                                           + " Would you like more information on another pizza type?"))
         state["messages"].append(FunctionMessage(content=OrderSlots.PIZZA_NAME, name=OrderSlots.PIZZA_NAME.value))
         state["give_description"] = False
         return {
             "messages": state["messages"],
             "give_description": state["give_description"]
         }
-        
-    #def route(self, state: ChatbotState) -> str:
-    #TODO necessary?
-
 
 def resolve_description(_input):
     
@@ -499,7 +493,14 @@ Below is a text for you to analyze."""},
     #TODO use actual logging while in debug
     #logger.info(received_message)
     
-    return eval(received_message)["desc"]
+    return_message = ""
+    
+    try:
+        return_message = eval(received_message)["desc"]
+    except Exception as e:
+        return_message = "No Description found"
+    
+    return return_message
 
 
 def resolve_pizza(_input):
@@ -567,11 +568,7 @@ if __name__ == "__main__":
     description_node = DescriptionNode()
 
     workflow = StateGraph(ChatbotState)
-    #TODO set entrypoint as language detection-node
-    #either use it to set a state (enum)
-    #or route to language dependant nodes
     workflow.add_node(Nodes.CHECKER.value, checker_node.invoke)
-    #TODO try removing retrieval node -> input saving is already done within dialogue state
     workflow.add_node(Nodes.RETRIEVAL.value, retrieval_node.invoke)
     workflow.add_node(Nodes.ORDER_FORM.value, order_node.invoke)
     workflow.add_node(Nodes.DESCRIPTION.value, description_node.invoke)
